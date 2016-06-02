@@ -7,9 +7,10 @@ import hashlib
 from uuid import uuid4
 from io import BytesIO
 from operator import attrgetter
+from warnings import warn
 
 
-def write_zim(articles, mimetypes, filename = "out.zim"):
+def write_zim(articles, mimetypes, filename="out.zim", main_page_url=None):
     """ Write a zim file from an article iterator.
     
     Parameters
@@ -24,6 +25,8 @@ def write_zim(articles, mimetypes, filename = "out.zim"):
         this list.
     filename: string
         The output filename.
+    main_page_url: string
+        The url of the 'main' or 'welcome' or 'index.html' page
     """
     with open(filename,"wb") as outzim:
         
@@ -34,10 +37,18 @@ def write_zim(articles, mimetypes, filename = "out.zim"):
         outzim.write(bytes(ZimMimelist(mimetypes)))
         zim_header.urlPtrPos = outzim.tell()
         
-        cluster_grp, dir_entries, titles = split_articles_to_clusters(articles)
+        cluster_grp, dir_entries, titles, urls = split_articles_to_clusters(articles)
         zim_header.clusterCount = len(cluster_grp)
         zim_header.articleCount = len(dir_entries)
         N = zim_header.articleCount
+
+        # add link to mainPage
+        if main_page_url is not None:
+            try:
+                zim_header.mainPage = urls.index(main_page_url.encode('UTF8'))
+            except ValueError:
+                warn('mainPage url not found [ {0} ]'.format(main_page_url))
+
         
         ## there must be a better way to find this
         dir_entries_offset = zim_header.urlPtrPos + (12 * N)
@@ -102,6 +113,7 @@ def split_articles_to_clusters(articles, max_cluster_size=1e6):
     cluster_grp = DataGroup("temp_clusters.pyzim")
     dir_entries = DataGroup("temp_entries.pyzim")
     titles = []
+    urls = []
     
     current_cluster = ZimCluster()
     current_ns = "-"
@@ -122,9 +134,10 @@ def split_articles_to_clusters(articles, max_cluster_size=1e6):
             titles.append(article.title)
         else:
             titles.append(article.url)
+        urls.append(article.url)
     cluster_grp.append(current_cluster)
         
-    return cluster_grp, dir_entries, titles
+    return cluster_grp, dir_entries, titles, urls
 
 class ZimTitlePtrTable(object):
     def __init__(self, titles, N):
